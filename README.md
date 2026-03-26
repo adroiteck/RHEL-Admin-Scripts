@@ -1,6 +1,6 @@
 # RHEL Administration Bash Scripts
 
-A comprehensive collection of **55 production-ready Bash scripts** for administering Red Hat Enterprise Linux environments. Organized into 10 categories covering every major RHEL administration task. Compatible with **RHEL 7, 8, and 9**.
+A comprehensive collection of **63 production-ready Bash scripts** for administering Red Hat Enterprise Linux environments. Organized into 11 categories covering every major RHEL administration task, including in-place version upgrades. Compatible with **RHEL 7, 8, and 9**.
 
 ## Requirements
 
@@ -23,7 +23,8 @@ RHEL-Admin-Scripts/
 ├── Monitoring-Logging/        # 5 scripts — health checks, log analysis, journal mgmt
 ├── Backup-Recovery/           # 5 scripts — system/config/DB backup, restore, verify
 ├── Performance-Tuning/        # 5 scripts — kernel tuning, I/O scheduler, limits, profiling
-└── System-Reporting/          # 5 scripts — inventory, SOC reports, change tracking
+├── System-Reporting/          # 5 scripts — inventory, SOC reports, change tracking
+└── Migration-Upgrade/         # 8 scripts — RHEL 7→8 and 8→9 Leapp in-place upgrades
 ```
 
 ---
@@ -132,6 +133,46 @@ RHEL-Admin-Scripts/
 | `uptime-report.sh` | Uptime tracking — current uptime, last boot, reboot history, unplanned shutdowns, average uptime over configurable period |
 | `compare-systems.sh` | System profile comparison — captures packages, services, firewall rules, kernel params, users into a profile file. Diff two profiles |
 | `change-tracker.sh` | Configuration drift detection — uses `rpm -V` to find modified config files, compares against RPM database, flags unowned files |
+
+## Migration & Upgrade (8 scripts)
+
+Scripts for **RHEL 7→8** and **RHEL 8→9** in-place upgrades using Red Hat's [Leapp framework](https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/9/html/upgrading_from_rhel_8_to_rhel_9/index). Designed to be run in sequence as a complete migration workflow.
+
+| Script | Phase | Description |
+|--------|-------|-------------|
+| `pre-migration-assessment.sh` | 1. Assess | Comprehensive readiness check — RHEL version, subscription, disk space, custom kernels, third-party packages, deprecated packages, network config method, boot mode, LVM layout, SELinux policies. Generates pass/warn/fail HTML report |
+| `capture-system-state.sh` | 2. Baseline | Captures complete system state before upgrade — RPM list, enabled services, firewall rules, network config, kernel params, SELinux booleans, mounts, crontabs, repos, users, open ports, running processes. Saves to timestamped directory for post-upgrade comparison |
+| `prepare-leapp-upgrade.sh` | 3. Prepare | Installs Leapp packages, sets required repos, runs `leapp preupgrade`, parses inhibitors with suggested fixes. `--auto-fix` mode handles common blockers (pam_pkcs11, network-scripts, answer files) |
+| `execute-upgrade.sh` | 4. Upgrade | Orchestrates `leapp upgrade` — verifies assessment and baseline were run, checks no inhibitors remain, creates LVM snapshot for rollback, disables non-essential services, runs upgrade, sets up post-reboot validation |
+| `post-migration-validate.sh` | 5. Validate | Post-reboot validation — verifies new RHEL version, kernel, service status, network connectivity, package manager health, SELinux, subscription. Compares current state against pre-upgrade baseline to find missing packages, stopped services, config changes |
+| `fix-post-upgrade-issues.sh` | 6. Remediate | Fixes common post-upgrade issues — reinstalls missing packages, re-enables stopped services, fixes SELinux labels (`restorecon`), handles interface renames, rebuilds initramfs, clears old caches, re-registers subscription |
+| `rollback-upgrade.sh` | 7. Rollback | Emergency rollback — merges LVM snapshot to revert, provides rescue mode instructions, Leapp rollback procedures, restores backed-up configs. Use if upgrade fails or validation shows critical issues |
+| `migration-report.sh` | 8. Report | Generates professional HTML migration report — combines pre-assessment, before/after state comparison, upgrade log summary, validation results, issues and fixes, total migration time. Audit-ready |
+
+### Recommended Workflow
+
+```bash
+# 1. Assess readiness
+sudo ./Migration-Upgrade/pre-migration-assessment.sh --target 9 --format html --output /tmp/assessment.html
+
+# 2. Capture baseline
+sudo ./Migration-Upgrade/capture-system-state.sh --output-dir /var/log/migration/pre-upgrade
+
+# 3. Prepare Leapp (fix common blockers automatically)
+sudo ./Migration-Upgrade/prepare-leapp-upgrade.sh --target 9 --auto-fix
+
+# 4. Execute upgrade (with LVM snapshot safety net)
+sudo ./Migration-Upgrade/execute-upgrade.sh --snapshot --reboot
+
+# 5. After reboot — validate
+sudo ./Migration-Upgrade/post-migration-validate.sh --pre-state-dir /var/log/migration/pre-upgrade
+
+# 6. Fix any issues found
+sudo ./Migration-Upgrade/fix-post-upgrade-issues.sh --pre-state-dir /var/log/migration/pre-upgrade --auto-fix
+
+# 7. Generate final report
+sudo ./Migration-Upgrade/migration-report.sh --pre-state-dir /var/log/migration/pre-upgrade --output /tmp/migration-report.html
+```
 
 ---
 
